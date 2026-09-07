@@ -74,8 +74,8 @@ That's it. The bot will now run automatically every weekday at 4:00 PM IST.
 ## When the session expires ("logged out")
 
 Google Workspace can force re-authentication after some period. When that
-happens, the scheduled run fails and GitHub emails you a "workflow run
-failed" notification, with the log saying the session expired.
+happens, the run is skipped (with a log message saying the session expired)
+until you refresh `AUTH_STATE`.
 
 To fix it, repeat steps 4 and 5 above:
 
