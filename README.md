@@ -1,7 +1,7 @@
 # Kalvium Daily Journal Bot
 
 Automatically submits the "Simulated Work Daily Journal" Google Form every
-weekday at 4:00 PM IST via GitHub Actions, marking "working day, present"
+day at 4:30 PM IST via GitHub Actions, marking "working day, present"
 and filling the four follow-up questions with varied generated content.
 
 ## How it works
@@ -11,7 +11,7 @@ and filling the four follow-up questions with varied generated content.
 - The session is stored as the `AUTH_STATE` repo secret and restored at the
   start of each workflow run.
 - The schedule lives in `.github/workflows/daily-journal.yml`
-  (`30 10 * * 1-5` UTC = 4:00 PM IST, Mon-Fri).
+  (`0 11 * * *` UTC = 4:30 PM IST, every day).
 
 ## Setup (for your own account)
 
@@ -69,7 +69,7 @@ Push your clone to GitHub (if you haven't already), then check the
 **Actions** tab on your fork — GitHub sometimes disables scheduled
 workflows on forks by default, so click "Enable workflow" if prompted.
 
-That's it. The bot will now run automatically every weekday at 4:00 PM IST.
+That's it. The bot will now run automatically every day at 4:30 PM IST.
 
 ## When the session expires ("logged out")
 
@@ -92,9 +92,10 @@ gh workflow run daily-journal.yml --repo <your-username>/<your-fork>
 
 ## Notes
 
-- Holidays/leave days aren't auto-detected — the bot always marks
-  "present". Disable the workflow manually (Actions tab → ... → Disable
-  workflow) on days you don't want it to run.
+- The bot now runs every day, including weekends. Holidays/leave days
+  aren't auto-detected — the bot always marks "present". Disable the
+  workflow manually (Actions tab → ... → Disable workflow) on days you
+  don't want it to run.
 - Keep the repo **private** — `auth_state.json` grants access to your
   Google session and should never be committed or shared. It only ever
   lives as the encrypted `AUTH_STATE` secret.
