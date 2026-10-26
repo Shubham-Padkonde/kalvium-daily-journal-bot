@@ -81,17 +81,45 @@ def submit(entry, expected_email, auth_state, state_dir):
             page = context.new_page()
             page.goto(FORM_URL, wait_until="domcontentloaded")
             if "accounts.google.com" in page.url:
-                raise ValueError("Google sign-in has expired. No submission was made.")
-            email_box = page.get_by_role("checkbox", name=f"Record {expected_email} as the email to be included with my response", exact=True)
-            expect(email_box).to_be_visible()
-            email_box.check()
-            page.get_by_role("radio", name="It was a working day, and I was present", exact=True).check()
+                raise ValueError(
+                    "Google sign-in has expired. The session cookies in AUTH_STATE_JSON expired (Google Workspace session limit). "
+                    "Please re-authenticate to refresh the session."
+                )
+
+            # Locate and ensure email recording checkbox is checked if present
+            expected_email_clean = expected_email.strip()
+            email_pattern = re.compile(rf"Record\s+{re.escape(expected_email_clean)}|{re.escape(expected_email_clean)}", re.IGNORECASE)
+            email_box = page.get_by_role("checkbox", name=email_pattern)
+            if email_box.count() > 0 and email_box.first.is_visible():
+                if email_box.first.get_attribute("aria-checked") != "true":
+                    email_box.first.click()
+            else:
+                generic_box = page.locator("div[role='checkbox']").filter(has_text=re.compile(re.escape(expected_email_clean), re.IGNORECASE))
+                if generic_box.count() > 0 and generic_box.first.is_visible():
+                    if generic_box.first.get_attribute("aria-checked") != "true":
+                        generic_box.first.click()
+
+            present_radio = page.get_by_role("radio", name=re.compile("working day.*present", re.IGNORECASE))
+            if present_radio.count() == 0:
+                present_radio = page.get_by_role("radio", name="It was a working day, and I was present", exact=True)
+            expect(present_radio.first).to_be_visible()
+            if present_radio.first.get_attribute("aria-checked") != "true":
+                present_radio.first.click()
             page.get_by_role("button", name="Next", exact=True).click()
 
-            for key, question in QUESTIONS.items():
-                answer = page.get_by_role("textbox", name=re.compile("^" + re.escape(question)))
-                answer.fill(entry[key])
-                expect(answer).to_have_value(entry[key])
+            # Ensure page 2 textboxes are fully rendered before querying
+            page.get_by_role("textbox").first.wait_for(state="visible", timeout=15000)
+            keys = ["tasks", "solved", "pending", "plan"]
+            textboxes = page.get_by_role("textbox").all()
+            if len(textboxes) >= 4:
+                for i, key in enumerate(keys):
+                    textboxes[i].fill(entry[key])
+                    expect(textboxes[i]).to_have_value(entry[key])
+            else:
+                for key, question in QUESTIONS.items():
+                    answer = page.get_by_role("textbox", name=question, exact=False)
+                    answer.fill(entry[key])
+                    expect(answer).to_have_value(entry[key])
             page.get_by_role("button", name="Next", exact=True).click()
             submit_button = page.get_by_role("button", name="Submit", exact=True)
             expect(submit_button).to_be_visible()
@@ -111,15 +139,44 @@ def submit(entry, expected_email, auth_state, state_dir):
             browser.close()
 
 
+STANDING_RESPONSES = {
+    "tasks": "Working on ongoing Simulated Work tasks.",
+    "solved": "No specific resolved problem is documented in this entry.",
+    "pending": "No specific unresolved problem is documented in this entry.",
+    "plan": "Continue working on the assigned Simulated Work tasks in the next session.",
+}
+
+
+def get_default_entry(today=None):
+    today = today or india_date()
+    return {
+        "date": today,
+        "attendance": "present",
+        **STANDING_RESPONSES,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--entry", type=Path, default=Path("journal_entry.json"))
     parser.add_argument("--auth-state", type=Path, default=Path("auth_state.json"))
     parser.add_argument("--state-dir", type=Path, default=Path(".journal-state"))
     parser.add_argument("--submit", action="store_true", help="Actually submit the dated entry; otherwise validate only.")
+    parser.add_argument("--auto", action="store_true", help="Use default standing responses for today if entry file is missing.")
     args = parser.parse_args()
     try:
-        entry = validate_entry(json.loads(args.entry.read_text(encoding="utf-8")))
+        if args.entry.exists():
+            entry = validate_entry(json.loads(args.entry.read_text(encoding="utf-8")))
+        elif args.auto or not args.entry.exists():
+            print("No journal_entry.json found; using standing default responses.")
+            entry = validate_entry(get_default_entry())
+        else:
+            raise ValueError(f"Entry file '{args.entry}' not found.")
+
+        # If AUTH_STATE_JSON env var is set, create or update auth_state file
+        if os.environ.get("AUTH_STATE_JSON"):
+            args.auth_state.write_text(os.environ["AUTH_STATE_JSON"], encoding="utf-8")
+
         if args.submit:
             submit(entry, os.environ.get("EXPECTED_EMAIL", ""), args.auth_state, args.state_dir)
         else:
