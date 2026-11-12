@@ -81,6 +81,8 @@ def refresh():
                         page.locator("form").count() > 0
                         or page.locator("div[role='list']").count() > 0
                         or page.get_by_role("button", name="Next").count() > 0
+                        or page.get_by_text("already responded", exact=False).count() > 0
+                        or page.get_by_text("recorded", exact=False).count() > 0
                     ):
                         print("\n[✓] Successfully detected active Google Form page!")
                         logged_in = True
@@ -92,7 +94,7 @@ def refresh():
             time.sleep(1)
 
         if not logged_in:
-            print("\n[-] Timed out waiting for sign-in after 5 minutes.")
+            print("\n[-] Timed out waiting for sign-in after 15 minutes.")
             context.close()
             sys.exit(1)
 
@@ -119,6 +121,8 @@ def refresh():
     # Step 3: Update GitHub Secret
     print("\nUpdating GitHub Repository Secrets...")
     try:
+        # Ensure active account matches the repo owner
+        subprocess.run(["gh", "auth", "switch", "--user", "AdityaNikam10"], capture_output=True, text=True)
         check_gh = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
         if check_gh.returncode == 0:
             with open(auth_state_path, "r", encoding="utf-8") as f:

@@ -3,10 +3,13 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 
-from daily_fill import india_date, reserve_attempt, validate_entry
+from daily_fill import india_date, reserve_attempt, validate_entry, wait_until_target_time
 
 
 class JournalGuardsTest(unittest.TestCase):
+    def test_wait_until_target_time_no_wait_when_passed(self):
+        # Target in past should not sleep
+        wait_until_target_time(target_hour=0, target_minute=0, max_wait_seconds=60)
     def entry(self):
         return {"date": "2026-09-14", "attendance": "present", "tasks": "Implemented the project search filter.", "solved": "Fixed search state resetting on navigation.", "pending": "Keyboard navigation remains unfinished.", "plan": "Finish keyboard navigation and test it."}
 

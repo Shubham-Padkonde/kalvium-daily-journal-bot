@@ -8,6 +8,7 @@ import argparse
 import json
 import os
 import re
+import time
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,6 +29,17 @@ def india_date(now=None):
     if now.tzinfo is None:
         raise ValueError("A timezone-aware timestamp is required.")
     return now.astimezone(IST).date().isoformat()
+
+
+def wait_until_target_time(target_hour=16, target_minute=30, max_wait_seconds=900):
+    """If running shortly before target time (e.g. 16:20-16:30 IST), wait until target time."""
+    now = datetime.now(IST)
+    target = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+    diff = (target - now).total_seconds()
+    if 0 < diff <= max_wait_seconds:
+        print(f"Current time is {now.strftime('%H:%M:%S')} IST. Waiting {int(diff)}s until {target_hour:02d}:{target_minute:02d} IST...")
+        time.sleep(diff)
+        print(f"Target time reached ({datetime.now(IST).strftime('%H:%M:%S')} IST). Proceeding with submission.")
 
 
 def validate_entry(entry, today=None):
@@ -86,6 +98,12 @@ def submit(entry, expected_email, auth_state, state_dir):
                     "Please re-authenticate to refresh the session."
                 )
 
+            # Check if form was already submitted today (e.g. limit 1 response)
+            already_done = re.compile(r"already responded|fill out this form only once", re.IGNORECASE)
+            if page.get_by_text(already_done).count() > 0:
+                print(f"[✓] Today's journal has already been submitted for {entry['date']}.")
+                return
+
             # Locate and ensure email recording checkbox is checked if present
             expected_email_clean = expected_email.strip()
             email_pattern = re.compile(rf"Record\s+{re.escape(expected_email_clean)}|{re.escape(expected_email_clean)}", re.IGNORECASE)
@@ -130,11 +148,18 @@ def submit(entry, expected_email, auth_state, state_dir):
             receipt = reserve_attempt(state_dir, entry["date"])
             submit_button.click()
             # The form intro also includes "recorded"; require the exact receipt.
-            expect(page.get_by_text("Your response has been recorded.", exact=True)).to_be_visible(timeout=15000)
+            expect(page.get_by_text(re.compile(r"Your response has been recorded", re.IGNORECASE))).to_be_visible(timeout=15000)
             temporary = receipt.with_suffix(".tmp")
             temporary.write_text(json.dumps({"date": entry["date"], "status": "confirmed", "confirmed_at": datetime.now(IST).isoformat()}), encoding="utf-8")
             temporary.replace(receipt)
             print(f"Confirmed journal submission for {entry['date']}.")
+        except Exception:
+            try:
+                page.screenshot(path="submit_failure.png", full_page=True)
+                print("[!] Saved failure screenshot to submit_failure.png")
+            except Exception:
+                pass
+            raise
         finally:
             browser.close()
 
@@ -163,6 +188,7 @@ def main():
     parser.add_argument("--state-dir", type=Path, default=Path(".journal-state"))
     parser.add_argument("--submit", action="store_true", help="Actually submit the dated entry; otherwise validate only.")
     parser.add_argument("--auto", action="store_true", help="Use default standing responses for today if entry file is missing.")
+    parser.add_argument("--no-wait", action="store_true", help="Do not wait for 16:30 IST even if scheduled early.")
     args = parser.parse_args()
     try:
         if args.entry.exists():
@@ -174,10 +200,13 @@ def main():
             raise ValueError(f"Entry file '{args.entry}' not found.")
 
         # If AUTH_STATE_JSON env var is set, create or update auth_state file
-        if os.environ.get("AUTH_STATE_JSON"):
-            args.auth_state.write_text(os.environ["AUTH_STATE_JSON"], encoding="utf-8")
+        auth_state_env = os.environ.get("AUTH_STATE_JSON", "").strip()
+        if auth_state_env:
+            args.auth_state.write_text(auth_state_env, encoding="utf-8")
 
         if args.submit:
+            if not args.no_wait and (os.environ.get("GITHUB_EVENT_NAME") == "schedule" or args.auto):
+                wait_until_target_time(16, 30)
             submit(entry, os.environ.get("EXPECTED_EMAIL", ""), args.auth_state, args.state_dir)
         else:
             print(f"Validated entry for {entry['date']}; nothing submitted.")
