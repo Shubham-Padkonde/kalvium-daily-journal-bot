@@ -9,4 +9,5 @@ form_page.html
 journal_entry.json
 entries/
 .journal-state/
+.chrome_profile/
 .env

@@ -33,7 +33,7 @@ def refresh():
     print("   the session cookies, update GitHub Secrets, and trigger GitHub Actions!\n")
 
     auth_state_path = "auth_state.json"
-    user_data_dir = os.path.expanduser("~/.kalvium-bot-chrome-profile")
+    user_data_dir = os.path.abspath(".chrome_profile")
     os.makedirs(user_data_dir, exist_ok=True)
 
     with sync_playwright() as p:
